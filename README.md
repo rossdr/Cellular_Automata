@@ -1,4 +1,4 @@
-#Cave
+<h1>Cave</h1>
 
 
 
@@ -6,7 +6,7 @@
 
 
 
-##The Code
+<h2>The Code</h2>
 
 
 
@@ -57,7 +57,7 @@ I have mitigated the incremental seed-changes by way of a "BumpSeed" method. Thi
 
 
 
-##The Randomiser
+<h2>The Randomiser</h2>
 
 
 
@@ -83,7 +83,7 @@ I have found on Wikipedia a twister for 64-bit machines, which gets eight bytes 
 
 
 
-##VARPTR
+<h2>VARPTR</h2>
 
 
 
@@ -100,7 +100,7 @@ It is dangerous, as the 1980s were without Protection; but with careful thought 
 
 
 
-##Square... or Hexagon
+<h2>Square... or Hexagon</h2>
 
 
 
@@ -118,12 +118,5 @@ I must get out in front that the hex model doesn't look good. Hexes rendered to 
 
 
 David Ross
+
 2 September 2025
-
-
-
-
-
-
-
-
