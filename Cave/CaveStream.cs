@@ -48,8 +48,8 @@
 
             //Aside on C# Random. The documentation credits Donald E. Knuth (fl. 1981-1997).
             //Knuth over seeds 0-203 (136+ HEIGHT=67) restricts width to 64. Because the next X over, is too-often false.
-            //White vertical lines everywhere. (How 1980s.)
-            //So I use Mersenne; the classic 32-bit implementation for now. Hence why topseed is marked "UInt32".
+            //Bright vertical lines everywhere. (How 1980s.)
+            //So I use Mersenne; 64-bit implementation. Although the seeds remain 32-bit.
 
             //I get connected spaces in the wall when wall-ratio is 18% or 60%.
             //37% worked well with Knuth past 64-width due to the artifacts; with better randomisers we get islands of rock.
@@ -261,6 +261,108 @@
             return newMap;
         }
 
+        //true is the hole in the wall which will look dark green
+        private bool[] GetFrame()
+        {
+            if (_frame != null) return _frame.Clone() as bool[];
+            _frame = new bool[_map.Length];
+            uint height = (uint)_map.Length / _width;
+            uint x;
+            uint lastRow = _width * (height - 2);
+            for (x = 0; x < _width << 1; x++)
+            {
+                _frame[x] = true;
+                _frame[lastRow++] = true;
+            }
+            //x = _width << 1 now
+            uint lastCol = x + _width - 1;
+            for (uint y = 2; y < height - 2; y++)
+            {
+                _frame[x] = true;
+                _frame[x + 1] = true;
+                _frame[lastCol - 1] = true;
+                _frame[lastCol] = true;
+                x += _width;
+                lastCol += _width;
+            }
+            return _frame.Clone() as bool[];
+        }
+
+        //features to change the state efficiently
+
+        public void RedoRandom(uint seed)
+        {
+            _topseed = seed;
+            _randommap = FillRandom((uint)(_map.Length / _width), seed);
+        }
+
+        public void SetFirstMap(byte percentAreWalls)
+        {
+            //The automaton is dug:
+            //from the Elemental Plane Of Earth, or from a rock dropped in the Elemental Plane Of Air.
+            //I'm tying Air-or-Earth to the incoming wall-%.
+            _hasWall = percentAreWalls >= 50;
+            //The picture-frame is so that FillLineWalls doesn't have to test the boundaries
+            //false is light wall, true is dark hole in wall
+            if (!_hasWall && _perbyteAreWalls >= 128)
+                _map = GetFrame();
+            else if (_hasWall && _perbyteAreWalls < 128)
+                _map = new bool[_map.Length];
+            //It was a thought to break Mersenne64's bytes to [0,128) nybbles.
+            //But the savings weren't there.
+            _perbyteAreWalls = (byte)(percentAreWalls * 2.56);
+            _iterations = 0;
+
+            var byteWidth = _width - 4;
+            var byteHeight = _randommap.Length / byteWidth;
+
+            fixed (bool* mapAddr = &_map[_width << 1])
+            {
+                fixed (byte* randomAddr = &_randommap[0])
+                {
+                    var bitPtr = mapAddr;
+                    var bytePtr = randomAddr;
+                    for (int y = 0; y < byteHeight; y++)
+                    {
+                        bitPtr += 2;
+                        for (int x = 0; x < byteWidth; x++)
+                        {
+                            *bitPtr = *bytePtr > _perbyteAreWalls;
+                            bitPtr++; bytePtr++;
+                        }
+                        bitPtr += 2;
+                    }
+                }
+            }
+        }
+
+        public void Iterate(int iterations)
+        {
+            int height = _map.Length / (int)_width;
+            _iterations += iterations;
+            for (var i = 0; i < iterations; i++)
+            {
+                _map = FillSquare(_map, height);
+            }
+        }
+        public void Iterate()
+        {
+            int height = _map.Length / (int)_width;
+            _iterations++;
+            _map = FillSquare(_map, height);
+        }
+
+        //here follow the user-friendliness optional features.
+
+        /// <summary>
+        /// Expose present state of the field in two dimensions for display.
+        /// </summary>
+        /// <returns>2D array</returns>
+        /// <remarks>
+        /// Makes the array easier for human observers to code with.
+        /// Otherwise it's unnecessary - and slow.
+        /// To lighten the load I've done this the /unsafe way.
+        /// </remarks>
         public bool[,] GetMap()
         {
             int height = _map.Length / (int)_width;
@@ -278,10 +380,17 @@
             return map;
         }
 
-        //Good-enough for bump=1. Noticeable improvement 16 iterations / short width.
-        //I see some artifacting at iter=4 scrolling down and up again.
-        //But it only happens in the openspace mush (dark-mix), not in the solid walls (light).
-        public void BumpSeed(short bump)
+        /// <summary>
+        /// A peek ahead to the next seed.
+        /// Approximate: so, please refresh viewer if you see patterns you like.
+        /// </summary>
+        /// <param name="bump">How many seeds to look ahead. Only 1 supported.</param>
+        /// <remarks>
+        /// Noticeable improvement 16 iterations / short width.
+        /// I see some artifacting at iter=4 scrolling down and up again.
+        /// But it only happens in the openspace mush (dark-mix), not in the solid walls (light).
+        /// </remarks>
+        public void BumpSeed(short bump = 1)
         {
             uint height = (uint)(_map.Length / _width);
 
@@ -356,7 +465,7 @@
             var edgeToPatch = (int)(height - cursorMap) * (int)_width;
             Buffer.BlockCopy(_map, bump * (int)_width, _map, 0, edgeToPatch);
 
-            //patch in what we just did here
+            //Finally, patch in what we just did here
             Buffer.BlockCopy(
                 newMap, (int)(_width * (spanHeight - cursorMap)),
                 _map, edgeToPatch,
@@ -364,102 +473,11 @@
 
             _topseed += (uint)bump;
         }
-
-        public void RedoRandom(uint seed)
-        {
-            _topseed = seed;
-            _randommap = FillRandom((uint)(_map.Length / _width), seed);
-        }
-
-        //true is the hole in the wall which will look dark green
-        private bool[] GetFrame()
-        {
-            if (_frame != null) return _frame.Clone() as bool[];
-            _frame = new bool[_map.Length];
-            uint height = (uint)_map.Length / _width;
-            uint x;
-            uint lastRow = _width * (height - 2);
-            for (x = 0; x < _width << 1; x++)
-            {
-                _frame[x] = true;
-                _frame[lastRow++] = true;
-            }
-            //x = _width << 1 now
-            uint lastCol = x + _width - 1;
-            for (uint y = 2; y < height - 2; y++)
-            {
-                _frame[x] = true;
-                _frame[x + 1] = true;
-                _frame[lastCol - 1] = true;
-                _frame[lastCol] = true;
-                x += _width;
-                lastCol += _width;
-            }
-            return _frame.Clone() as bool[];
-        }
-
-        public void SetFirstMap(byte percentAreWalls)
-        {
-            //The automaton is dug:
-            //from the Elemental Plane Of Earth, or from a rock dropped in the Elemental Plane Of Air.
-            //I'm tying Air-or-Earth to the incoming wall-%.
-            _hasWall = percentAreWalls >= 50;
-            //The picture-frame is so that FillLineWalls doesn't have to test the boundaries
-            //false is light wall, true is dark hole in wall
-            if (!_hasWall && _perbyteAreWalls >= 128)
-                _map = GetFrame();
-            else if (_hasWall && _perbyteAreWalls < 128)
-                _map = new bool[_map.Length];
-            //It was a thought to break Mersenne64's bytes to [0,128) nybbles.
-            //But the savings weren't there.
-            _perbyteAreWalls = (byte)(percentAreWalls * 2.56);
-            _iterations = 0;
-
-            var byteWidth = _width - 4;
-            var byteHeight = _randommap.Length / byteWidth;
-
-            fixed (bool* mapAddr = &_map[_width << 1])
-            {
-                fixed (byte* randomAddr = &_randommap[0])
-                {
-                    var bitPtr = mapAddr;
-                    var bytePtr = randomAddr;
-                    for (int y = 0; y < byteHeight; y++)
-                    {
-                        bitPtr += 2;
-                        for (int x = 0; x < byteWidth; x++)
-                        {
-                            *bitPtr = *bytePtr > _perbyteAreWalls;
-                            bitPtr++; bytePtr++;
-                        }
-                        bitPtr += 2;
-                    }
-                }
-            }
-        }
-
-        public void Iterate(int iterations)
-        {
-            int height = _map.Length / (int)_width;
-            _iterations += iterations;
-            for (var i = 0; i < iterations; i++)
-            {
-                _map = FillSquare(_map, height);
-            }
-        }
-        public void Iterate()
-        {
-            int height = _map.Length / (int)_width;
-            _iterations++;
-            _map = FillSquare(_map, height);
-        }
     }
 }
-
 /*troubleshoot!
  * using System.Diagnostics;
 using System.Text;
-
 
 StringBuilder st;
 for (int y = _height - spanHeight; y < _height; y++)
