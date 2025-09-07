@@ -12,7 +12,7 @@
         private const int SQUARE_OFFSET = 40;
         private const int HEX_OFFSET = 30;
 
-        private uint seed;
+        private ulong seed, offs;
         private int iters, contentwidth, contentheight, offset;
         private byte wallperc;
         private CaveStream _caveStream;
@@ -22,6 +22,7 @@
             InitializeComponent();
 
             seed = 0;
+            offs = 0;
             iters = 4;
             wallperc = 18;
         }
@@ -30,10 +31,12 @@
         {
             numSeed.Value = seed;
             numIter.Value = iters;
+            numOffs.Value = offs;
             numPerc.Value = wallperc;
             numSeed.ValueChanged += numSeed_ValueChanged;
-            numIter.ValueChanged += numIter_ValueChanged;
             numPerc.ValueChanged += numPerc_ValueChanged;
+            numOffs.ValueChanged += numOffs_ValueChanged;
+            numIter.ValueChanged += numIter_ValueChanged;
             this.OnResize(EventArgs.Empty); //call Form1_Resize, as to fit picturebox to form
             Snap();
         }
@@ -65,6 +68,33 @@
             }
         }
 
+        private void numSeed_ValueChanged(object sender, EventArgs e)
+        {
+            var newseed = (ulong)numSeed.Value;
+            short forwardSeed = (short)(newseed - seed);
+            seed = newseed;
+            if (forwardSeed == 1)//> 0 && forwardSeed < contentheight - 2)
+            {
+                //iters = 0; //TROUBLESHOOT the rnd. of course snap is broken until we do this. right now changing the wall%s will reset
+                _caveStream.BumpSeed(forwardSeed);
+            }
+            else
+            {
+                _caveStream.RedoRandom(newseed, offs);
+                _caveStream.SetFirstMap(wallperc);
+                _caveStream.Iterate(iters);
+            }
+            pictureBox1.Refresh();
+        }
+        private void numOffs_ValueChanged(object sender, EventArgs e)
+        {
+            offs = (ulong)numOffs.Value;
+            _caveStream.RedoRandom(seed, offs);
+            _caveStream.SetFirstMap(wallperc);
+            _caveStream.Iterate(iters);
+            pictureBox1.Refresh();
+        }
+
         private void numIter_ValueChanged(object sender, EventArgs e)
         {
             int newiters = (int)numIter.Value;
@@ -82,25 +112,7 @@
             }
             pictureBox1.Refresh();
         }
-        
-        private void numSeed_ValueChanged(object sender, EventArgs e)
-        {
-            var newseed = (uint)numSeed.Value;
-            short forwardSeed = (short)(newseed - seed);
-            seed = newseed;
-            if (forwardSeed == 1)//> 0 && forwardSeed < contentheight - 2)
-            {
-                //iters = 0; //TROUBLESHOOT the rnd. of course snap is broken until we do this. right now changing the wall%s will reset
-                _caveStream.BumpSeed(forwardSeed);
-            }
-            else
-            {
-                _caveStream.RedoRandom(newseed);
-                _caveStream.SetFirstMap(wallperc);
-                _caveStream.Iterate(iters);
-            }
-            pictureBox1.Refresh();
-        }
+
         private void numPerc_ValueChanged(object sender, EventArgs e)
         {
             wallperc = (byte)numPerc.Value;
@@ -124,7 +136,7 @@
 
         private void ChangeCave()
         {
-            _caveStream = new CaveStream((uint)contentwidth, (uint)contentheight, wallperc, cbxSquareHex.Checked, seed);
+            _caveStream = new CaveStream(cbxSquareHex.Checked, (uint)contentwidth, (uint)contentheight, seed, offs, wallperc);
             _caveStream.Iterate(iters);
         }
         private void Snap()

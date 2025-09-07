@@ -21,7 +21,7 @@
 
         private bool _hasWall;
         private int _iterations;
-        private UInt32 _topseed; //presently write-only, not floated to the UI.
+        private UInt64 _topseed, _xoffset; //presently write-only, not floated to the UI.
         private byte _perbyteAreWalls;
         private byte[] _randommap; //RAM hit, but improves perf for iteration-backtrack and seed-changes.
         private bool[] _map; //false is wall. true is hole in wall. Also I am told 2D arrays have overhead. I dunno about that but I did get Buffer.BulkCopy & pointers from 1D here.
@@ -36,13 +36,12 @@
 
         private Mersenne64 _randomSeed;
 
-        public CaveStream(uint width, uint height, byte percentAreWalls, bool isHex, uint topseed)
+        public CaveStream(bool isHex, uint width, uint height, ulong topseed, ulong xoffset, byte percentAreWalls)
         {
             _width = width;
             _adjacentWalls = isHex ? 4 : 5;
 
             _iterations = 0;
-            _topseed = topseed;
 
             //this scrolls down the pseudorandom-number generator (PRNG), rooted in zero.
 
@@ -54,7 +53,7 @@
             //I get connected spaces in the wall when wall-ratio is 18% or 60%.
             //37% worked well with Knuth past 64-width due to the artifacts; with better randomisers we get islands of rock.
             _randomSeed = new Mersenne64();
-            _randommap = FillRandom(height, _topseed);
+            _randommap = FillRandom(height, xoffset, topseed); //which also sets the x,y state
             _map = new bool[_width * height];
             if (percentAreWalls < 50) //false is light wall, true is dark hole in wall
                 _map = GetFrame();
@@ -219,13 +218,18 @@
             }
         }
 
-        private byte[] FillRandom(uint height, uint seed)
+        private byte[] FillRandom(uint height, ulong xoffset, ulong seed)
         {
             byte[] map = new byte[(height - 4) * (_width - 4)];
             uint x = 0;
-            for (uint y = seed; y < seed + height - 4; y++)
+            for (ulong y = seed; y < seed + height - 4; y++)
             {
                 _randomSeed.sgenrand(y); //thus making a 2D scale riverworld
+                ulong offs = 0;
+                while (offs++ < xoffset)
+                {
+                    _randomSeed.genrand(); //the other dimension
+                }
                 foreach (var horizBytes in FillLine(_randomSeed))
                 {
                     Array.Copy(horizBytes, 0, map, x, 8);
@@ -290,10 +294,11 @@
 
         //features to change the state efficiently
 
-        public void RedoRandom(uint seed)
+        public void RedoRandom(ulong seed, ulong xoffset)
         {
+            _xoffset = xoffset;
             _topseed = seed;
-            _randommap = FillRandom((uint)(_map.Length / _width), seed);
+            _randommap = FillRandom((uint)(_map.Length / _width), xoffset, seed);
         }
 
         public void SetFirstMap(byte percentAreWalls)
@@ -395,7 +400,7 @@
             uint height = (uint)(_map.Length / _width);
 
             //possible to put these in separate Task, but the savings weren't really there
-            uint seed = _topseed + height - 4; // cf. FillRandom (and FillSquare). -4 b/c x is going to end before taking in the last row of nothing
+            ulong seed = _topseed + height - 4; // cf. FillRandom (and FillSquare). -4 b/c x is going to end before taking in the last row of nothing
 
             var byteWidth = _width - 4;
             uint randomMapCursor = (uint)((height - bump - 4) * byteWidth); //would be -2 and just width if the randommap were including the frame
@@ -405,6 +410,11 @@
             for (int i = 0; i < bump; i++)
             {
                 _randomSeed.sgenrand(seed++);
+                ulong offs = 0;
+                while (offs++ < _xoffset)
+                {
+                    _randomSeed.genrand();
+                }
                 foreach (var horizBytes in FillLine(_randomSeed))
                 {
                     Array.Copy(horizBytes, 0, _randommap, randomMapCursor, 8);
