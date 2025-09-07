@@ -17,7 +17,7 @@ Although there exist several algos one could use, this app's calculations are fo
 My class overall is not static. Specific steps must be taken:
 
 0. Set the width. This is done in the constructor. (My constructor will then speedrun steps 1-2.)
-1. Set the seed, down from which each line of bytes shall generate (randomly). 
+1. Set the seed and offset, down from which each line of bytes shall generate (randomly). 
 2. Set the limit byte of wall, below which each pixel is marked as "true". For human readability this comes in as 0-100 ("per-cent'") rather than 0-255.
 3. Iterate however-many times.
 
@@ -46,10 +46,10 @@ You will note as you muck with the program:
 * Resetting the width resets everything so is slowest.
 * Changing the seed must change up the box of bytes, so is also slow.
 * Changing the seed is a vertical scroll.
+* Changing the offset - dummy-runs of the randomiser right after the seed - is a horizontal scroll.
 
 
-
-Those last two constraints, together, are annoying.
+Those last three constraints, together, are annoying.
 
 
 
